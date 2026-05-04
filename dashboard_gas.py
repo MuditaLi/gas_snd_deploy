@@ -255,11 +255,3 @@ if st.button("Save Changes"):
     wide = pd.concat([wide, totals], ignore_index=True)
     wide.to_csv(filename, index=False)
     st.success("Changes saved to file!")
-
-# Summary
-st.subheader("Summary")
-st.write(f"LDZ Demand rows: {len(df[df['week'].str.startswith('LDZ, ') & ~df['week'].str.contains('Total')])}")
-st.write(f"GFP Demand rows: {len(df[df['week'].str.startswith('GFP, ') & ~df['week'].str.contains('Total')])}")
-st.write(f"Industry Demand rows: {len(df[df['week'].str.startswith('Ind, ') & ~df['week'].str.contains('Total')])}")
-st.write(f"Supply rows: {len(df[df['week'].isin(['Local production', 'NO pipeline flow', 'East pipeline flow', 'South pipeline flow', 'Regas/LNG'])])}")
-st.write(f"Net Injection rows: {len(df[df['week'].str.startswith('Injection, ') & ~df['week'].str.contains('Total')])}")
