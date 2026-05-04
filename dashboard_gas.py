@@ -87,7 +87,7 @@ def display_table_with_total(sub_df, title, heatmap=False):
             def clear_na_styles(val):
                 return 'background-color: transparent' if pd.isna(val) else ''
 
-            styled = styled.applymap(clear_na_styles, subset=numeric_subset)
+            styled = styled.map(clear_na_styles, subset=numeric_subset)
             styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
             st.dataframe(styled, use_container_width=True)
             return combined_df
