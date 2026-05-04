@@ -19,6 +19,7 @@ def load_weekly_df(path):
     raw = pd.read_csv(path)
     week_cols = [col for col in raw.columns if col.startswith('W')]
     data = raw.copy()
+    data[week_cols] = data[week_cols].astype(object)
     numeric_mask = data['week'] != 'mon'
     data.loc[numeric_mask, week_cols] = data.loc[numeric_mask, week_cols].apply(pd.to_numeric, errors='coerce')
     return data, week_cols, raw
