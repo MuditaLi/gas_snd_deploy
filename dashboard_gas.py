@@ -177,6 +177,42 @@ def build_summary_table(data_frame):
     return summary_df
 
 
+def selected_rows_for_table(sub_df, title):
+    rows = sub_df['week'].tolist()
+    return st.session_state.get(title, rows)
+
+
+def filter_for_summary(data_frame, label_prefix=""):
+    mon_mask = data_frame['week'] == 'mon'
+
+    ldz_mask = data_frame['week'].str.startswith('LDZ, ') & ~data_frame['week'].str.contains('Total')
+    gfp_mask = data_frame['week'].str.startswith('GFP, ') & ~data_frame['week'].str.contains('Total')
+    industry_mask = data_frame['week'].str.startswith('Ind, ') & ~data_frame['week'].str.contains('Total')
+    supply_mask = data_frame['week'].isin([
+        'Local production',
+        'NO pipeline flow',
+        'East pipeline flow',
+        'South pipeline flow',
+        'Regas/LNG'
+    ])
+
+    groups = [
+        (ldz_mask, f"{label_prefix}LDZ Demand"),
+        (gfp_mask, f"{label_prefix}GFP Demand"),
+        (industry_mask, f"{label_prefix}Industry Demand"),
+        (supply_mask, f"{label_prefix}Supply"),
+    ]
+
+    keep_parts = [data_frame[mon_mask]]
+    for mask, title in groups:
+        sub_df = data_frame[mask]
+        selected = selected_rows_for_table(insert_mon_row(sub_df, data_frame[mon_mask]), title)
+        selected = [row for row in selected if row != 'mon']
+        keep_parts.append(sub_df[sub_df['week'].isin(selected)])
+
+    return pd.concat(keep_parts, ignore_index=True)
+
+
 def display_summary_table(summary_df):
     week_cols = [col for col in summary_df.columns if col.startswith('W')]
 
@@ -267,7 +303,7 @@ current_tab, previous_tab, delta_tab = st.tabs(['this week', 'previous week', 'd
 with current_tab:
     st.write(f"Showing data for {current_label}")
     st.subheader('Summary')
-    summary_df = build_summary_table(df)
+    summary_df = build_summary_table(filter_for_summary(df))
     display_summary_table(summary_df)
     edited_ldz, edited_gfp, edited_industry, edited_supply, edited_injection = render_week_tables(df, mon_row=mon_row)
 
@@ -278,7 +314,7 @@ with previous_tab:
         prev_mon_row = prev_raw[prev_raw['week'] == 'mon']
         st.write(f"Showing data for {previous_label}")
         st.subheader('Summary')
-        prev_summary_df = build_summary_table(prev_df)
+        prev_summary_df = build_summary_table(filter_for_summary(prev_df, label_prefix="Previous "))
         display_summary_table(prev_summary_df)
         render_week_tables(prev_df, label_prefix="Previous ", mon_row=prev_mon_row)
     else:
@@ -294,7 +330,7 @@ with delta_tab:
         else:
             st.subheader('Delta vs previous week')
             st.write('Positive values mean an increase vs previous week; negative values mean a decrease.')
-            delta_summary_df = build_summary_table(delta_df)
+            delta_summary_df = build_summary_table(filter_for_summary(delta_df, label_prefix="Delta "))
             display_summary_table(delta_summary_df)
             render_week_tables(delta_df, label_prefix="Delta ", heatmap=True, mon_row=mon_row)
     else:
