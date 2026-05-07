@@ -148,6 +148,20 @@ def insert_mon_row(sub_df, mon_row):
     return combined
 
 
+def is_supply_row(series):
+    return (
+        series.isin([
+            'Local production',
+            'NO pipeline flow',
+            'East pipeline flow',
+            'South pipeline flow',
+            'Regas/LNG',
+            'lng',
+        ])
+        | series.str.endswith(', Production')
+    )
+
+
 def build_summary_table(data_frame):
     week_cols = [col for col in data_frame.columns if col.startswith('W')]
     demand_mask = (
@@ -155,13 +169,7 @@ def build_summary_table(data_frame):
         data_frame['week'].str.startswith('GFP, ') |
         data_frame['week'].str.startswith('Ind, ')
     )
-    supply_mask = data_frame['week'].isin([
-        'Local production',
-        'NO pipeline flow',
-        'East pipeline flow',
-        'South pipeline flow',
-        'Regas/LNG'
-    ])
+    supply_mask = is_supply_row(data_frame['week'])
     demand_sum = data_frame.loc[demand_mask, week_cols].apply(pd.to_numeric, errors='coerce').sum(numeric_only=True)
     supply_sum = data_frame.loc[supply_mask, week_cols].apply(pd.to_numeric, errors='coerce').sum(numeric_only=True)
     delta_sum = demand_sum - supply_sum
@@ -188,13 +196,7 @@ def filter_for_summary(data_frame, label_prefix=""):
     ldz_mask = data_frame['week'].str.startswith('LDZ, ') & ~data_frame['week'].str.contains('Total')
     gfp_mask = data_frame['week'].str.startswith('GFP, ') & ~data_frame['week'].str.contains('Total')
     industry_mask = data_frame['week'].str.startswith('Ind, ') & ~data_frame['week'].str.contains('Total')
-    supply_mask = data_frame['week'].isin([
-        'Local production',
-        'NO pipeline flow',
-        'East pipeline flow',
-        'South pipeline flow',
-        'Regas/LNG'
-    ])
+    supply_mask = is_supply_row(data_frame['week'])
 
     groups = [
         (ldz_mask, f"{label_prefix}LDZ Demand"),
@@ -234,7 +236,7 @@ def render_week_tables(data_frame, label_prefix="", heatmap=False, mon_row=None)
     ldz_demand = data_frame[data_frame['week'].str.startswith('LDZ, ') & ~data_frame['week'].str.contains('Total')]
     gfp_demand = data_frame[data_frame['week'].str.startswith('GFP, ') & ~data_frame['week'].str.contains('Total')]
     industry_demand = data_frame[data_frame['week'].str.startswith('Ind, ') & ~data_frame['week'].str.contains('Total')]
-    supply = data_frame[data_frame['week'].isin(['Local production', 'NO pipeline flow', 'East pipeline flow', 'South pipeline flow', 'Regas/LNG'])]
+    supply = data_frame[is_supply_row(data_frame['week'])]
     net_injection = data_frame[data_frame['week'].str.startswith('Injection, ') & ~data_frame['week'].str.contains('Total')]
 
     ldz_demand = insert_mon_row(ldz_demand, mon_row)
