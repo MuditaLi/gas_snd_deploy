@@ -9,11 +9,49 @@ st.set_page_config(layout="wide")
 st.title("Gas S&D Weekly Dashboard")
 
 # Load the data
-filename = "20260504_Gas_SnD_weekly.csv"
-file_date = Path(filename).stem.split('_')[0]
-current_date = pd.to_datetime(file_date, format='%Y%m%d')
-previous_filename = "20260501_Gas_SnD_weekly.csv"
-previous_label = "2026-05-01"
+def weekly_file_date(path):
+    date_part = path.stem.split('_')[0]
+    try:
+        return pd.to_datetime(date_part, format='%Y%m%d')
+    except ValueError:
+        return pd.NaT
+
+
+def find_weekly_files(folder="."):
+    files = []
+    for path in Path(folder).glob("*_Gas_SnD_weekly.csv"):
+        file_dt = weekly_file_date(path)
+        if not pd.isna(file_dt):
+            files.append((file_dt, path))
+    return sorted(files, key=lambda x: x[0])
+
+
+def latest_weekly_file(folder="."):
+    files = find_weekly_files(folder)
+    if not files:
+        raise FileNotFoundError("No *_Gas_SnD_weekly.csv files found.")
+    return files[-1]
+
+
+def previous_week_latest_file(current_dt, folder="."):
+    week_start = current_dt.normalize() - pd.Timedelta(days=current_dt.dayofweek)
+    previous_week_start = week_start - pd.Timedelta(days=7)
+    previous_week_end = week_start - pd.Timedelta(days=1)
+
+    candidates = [
+        (file_dt, path)
+        for file_dt, path in find_weekly_files(folder)
+        if previous_week_start <= file_dt <= previous_week_end
+    ]
+    return candidates[-1] if candidates else (None, None)
+
+
+current_date, current_path = latest_weekly_file()
+filename = current_path.name
+
+previous_date, previous_path = previous_week_latest_file(current_date)
+previous_filename = previous_path.name if previous_path is not None else None
+previous_label = previous_date.strftime('%Y-%m-%d') if previous_date is not None else "Previous week"
 
 def load_weekly_df(path):
     raw = pd.read_csv(path)
@@ -209,8 +247,7 @@ def compute_delta(current, previous, current_raw, previous_raw):
     return delta_wide
 
 current_label = current_date.strftime('%Y-%m-%d')
-previous_label = "2026-05-01"
-current_tab, previous_tab, delta_tab = st.tabs([current_label, previous_label, 'delta'])
+current_tab, previous_tab, delta_tab = st.tabs(['this week', 'previous week', 'delta'])
 
 with current_tab:
     st.write(f"Showing data for {current_label}")
@@ -220,8 +257,8 @@ with current_tab:
     st.dataframe(summary_df, use_container_width=True)
 
 with previous_tab:
-    prev_path = Path(previous_filename)
-    if prev_path.exists():
+    prev_path = Path(previous_filename) if previous_filename else None
+    if prev_path is not None and prev_path.exists():
         prev_df, _, prev_raw = load_weekly_df(previous_filename)
         prev_mon_row = prev_raw[prev_raw['week'] == 'mon']
         st.write(f"Showing data for {previous_label}")
@@ -230,11 +267,11 @@ with previous_tab:
         prev_summary_df = build_summary_table(prev_df)
         st.dataframe(prev_summary_df, use_container_width=True)
     else:
-        st.warning(f"Previous week file not found: {previous_filename}")
+        st.warning("Previous week file not found.")
 
 with delta_tab:
-    prev_path = Path(previous_filename)
-    if prev_path.exists():
+    prev_path = Path(previous_filename) if previous_filename else None
+    if prev_path is not None and prev_path.exists():
         prev_df, _, prev_raw = load_weekly_df(previous_filename)
         delta_df = compute_delta(df, prev_df, raw_df, prev_raw)
         if delta_df.empty:
@@ -244,7 +281,7 @@ with delta_tab:
             st.write('Positive values mean an increase vs previous week; negative values mean a decrease.')
             render_week_tables(delta_df, label_prefix="Delta ", heatmap=True, mon_row=mon_row)
     else:
-        st.warning(f"Cannot compute delta without {previous_filename}")
+        st.warning("Cannot compute delta without previous week file.")
 
 # Option to save changes
 if st.button("Save Changes"):
