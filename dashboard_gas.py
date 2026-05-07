@@ -177,6 +177,21 @@ def build_summary_table(data_frame):
     return summary_df
 
 
+def display_summary_table(summary_df):
+    week_cols = [col for col in summary_df.columns if col.startswith('W')]
+
+    def format_numeric(value):
+        try:
+            return f"{value:.2f}"
+        except (TypeError, ValueError):
+            return value
+
+    styled = summary_df.style.format(format_numeric, subset=week_cols)
+    if 'W0' in summary_df.columns:
+        styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
+    st.dataframe(styled, use_container_width=True)
+
+
 def render_week_tables(data_frame, label_prefix="", heatmap=False, mon_row=None):
     if mon_row is None:
         mon_row = data_frame[data_frame['week'] == 'mon']
@@ -251,10 +266,10 @@ current_tab, previous_tab, delta_tab = st.tabs(['this week', 'previous week', 'd
 
 with current_tab:
     st.write(f"Showing data for {current_label}")
-    edited_ldz, edited_gfp, edited_industry, edited_supply, edited_injection = render_week_tables(df, mon_row=mon_row)
     st.subheader('Summary')
     summary_df = build_summary_table(df)
-    st.dataframe(summary_df, use_container_width=True)
+    display_summary_table(summary_df)
+    edited_ldz, edited_gfp, edited_industry, edited_supply, edited_injection = render_week_tables(df, mon_row=mon_row)
 
 with previous_tab:
     prev_path = Path(previous_filename) if previous_filename else None
@@ -262,10 +277,10 @@ with previous_tab:
         prev_df, _, prev_raw = load_weekly_df(previous_filename)
         prev_mon_row = prev_raw[prev_raw['week'] == 'mon']
         st.write(f"Showing data for {previous_label}")
-        render_week_tables(prev_df, label_prefix="Previous ", mon_row=prev_mon_row)
         st.subheader('Summary')
         prev_summary_df = build_summary_table(prev_df)
-        st.dataframe(prev_summary_df, use_container_width=True)
+        display_summary_table(prev_summary_df)
+        render_week_tables(prev_df, label_prefix="Previous ", mon_row=prev_mon_row)
     else:
         st.warning("Previous week file not found.")
 
@@ -279,6 +294,8 @@ with delta_tab:
         else:
             st.subheader('Delta vs previous week')
             st.write('Positive values mean an increase vs previous week; negative values mean a decrease.')
+            delta_summary_df = build_summary_table(delta_df)
+            display_summary_table(delta_summary_df)
             render_week_tables(delta_df, label_prefix="Delta ", heatmap=True, mon_row=mon_row)
     else:
         st.warning("Cannot compute delta without previous week file.")
