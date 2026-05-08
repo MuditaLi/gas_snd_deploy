@@ -156,9 +156,7 @@ def is_supply_row(series):
             'East pipeline flow',
             'South pipeline flow',
             'Regas/LNG',
-            'lng',
         ])
-        | series.str.endswith(', Production')
     )
 
 
