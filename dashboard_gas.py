@@ -56,16 +56,12 @@ def latest_weekly_file(folder="."):
 
 
 def previous_week_latest_file(current_dt, folder="."):
-    week_start = current_dt.normalize() - pd.Timedelta(days=current_dt.dayofweek)
-    previous_week_start = week_start - pd.Timedelta(days=7)
-    previous_week_end = week_start - pd.Timedelta(days=1)
-
-    candidates = [
+    earlier = [
         (file_dt, path)
         for file_dt, path in find_weekly_files(folder)
-        if previous_week_start <= file_dt <= previous_week_end
+        if file_dt < current_dt
     ]
-    return candidates[-1] if candidates else (None, None)
+    return earlier[-1] if earlier else (None, None)
 
 
 current_date, current_path = latest_weekly_file()
