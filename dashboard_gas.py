@@ -128,33 +128,47 @@ def display_table_with_total(sub_df, title, heatmap=False):
 
         def format_numeric(value):
             try:
+                if pd.isna(value):
+                    return ''
                 return f"{value:.2f}"
             except (TypeError, ValueError):
-                return value
-        
+                return str(value) if value is not None else ''
+
+        # Convert mixed string/float columns to strings for Arrow compatibility
+        display_df = combined_df.copy()
+        for col in week_cols_local:
+            display_df[col] = display_df[col].apply(format_numeric)
+
         if heatmap:
             start_index = 0
             if 'W-1' in week_cols_local:
                 start_index = week_cols_local.index('W-1')
             heatmap_cols = week_cols_local[start_index:]
-            numeric_subset = pd.IndexSlice[combined_df[combined_df['week'] != 'mon'].index, heatmap_cols]
-            styled = combined_df.style.background_gradient(
+            non_mon_idx = combined_df[combined_df['week'] != 'mon'].index
+            numeric_subset = pd.IndexSlice[non_mon_idx, heatmap_cols]
+
+            # Extract numeric values for gradient before string conversion
+            gmap = combined_df.loc[non_mon_idx, heatmap_cols].apply(pd.to_numeric, errors='coerce')
+
+            styled = display_df.style.background_gradient(
                 cmap='RdYlGn',
                 subset=numeric_subset,
+                gmap=gmap,
                 axis=None
-            ).format(format_numeric, subset=numeric_subset)
+            )
 
             def clear_na_styles(val):
-                return 'background-color: transparent' if pd.isna(val) else ''
+                return 'background-color: transparent' if val == '' else ''
 
             styled = styled.map(clear_na_styles, subset=numeric_subset)
-            styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
-            st.dataframe(styled, use_container_width=True)
+            if 'W0' in week_cols_local:
+                styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
+            st.dataframe(styled, width='stretch')
             return combined_df
         else:
-            styled = combined_df.style.format(format_numeric, subset=week_cols_local)
-            styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
-            st.dataframe(styled, use_container_width=True)
+            if 'W0' in week_cols_local:
+                display_df = display_df.style.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
+            st.dataframe(display_df, width='stretch')
             return combined_df
     else:
         st.write("No data found")
@@ -247,7 +261,7 @@ def display_summary_table(summary_df):
     styled = summary_df.style.format(format_numeric, subset=week_cols)
     if 'W0' in summary_df.columns:
         styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
-    st.dataframe(styled, use_container_width=True)
+    st.dataframe(styled, width='stretch')
 
 
 def render_week_tables(data_frame, label_prefix="", heatmap=False, mon_row=None):
