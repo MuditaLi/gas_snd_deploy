@@ -1,3 +1,4 @@
+import subprocess
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -7,6 +8,27 @@ pd.set_option('display.float_format', '{:.2f}'.format)
 st.set_page_config(layout="wide")
 
 st.title("Gas S&D Weekly Dashboard")
+
+# Auto-pull once per browser session (on first page load).
+if "pulled_on_load" not in st.session_state:
+    subprocess.run(["git", "pull"], capture_output=True, cwd=Path(__file__).parent)
+    st.session_state.pulled_on_load = True
+
+col1, col2 = st.columns([1, 6])
+with col1:
+    if st.button("Pull latest data"):
+        result = subprocess.run(
+            ["git", "pull"],
+            capture_output=True,
+            text=True,
+            cwd=Path(__file__).parent,
+        )
+        with col2:
+            if result.returncode == 0:
+                st.success(result.stdout.strip() or "Already up to date.")
+            else:
+                st.error(result.stderr.strip())
+        st.rerun()
 
 # Load the data
 def weekly_file_date(path):
