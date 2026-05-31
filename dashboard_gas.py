@@ -132,8 +132,23 @@ def display_table_with_total(sub_df, title, heatmap=False):
 
         # Convert mixed string/float columns to strings for Arrow compatibility
         display_df = combined_df.copy()
+        display_df['week'] = display_df['week'].replace('mon', 'date')
         for col in week_cols_local:
             display_df[col] = display_df[col].apply(format_numeric)
+
+        date_idx = display_df[display_df['week'] == 'date'].index
+        non_date_idx = display_df[display_df['week'] != 'date'].index
+
+        DARK = '#2d3748'
+
+        def style_date_row(row):
+            if row.name in date_idx:
+                return [f'background-color: {DARK}; color: white; font-weight: bold'] * len(row)
+            return [''] * len(row)
+
+        header_styles = [{'selector': 'th', 'props': [
+            ('background-color', DARK), ('color', 'white'), ('font-weight', 'bold')
+        ]}]
 
         if heatmap:
             start_index = 0
@@ -157,14 +172,24 @@ def display_table_with_total(sub_df, title, heatmap=False):
                 return 'background-color: transparent' if val == '' else ''
 
             styled = styled.map(clear_na_styles, subset=numeric_subset)
-            if 'W0' in week_cols_local:
-                styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
+            styled = styled.apply(style_date_row, axis=1)
+            styled = styled.set_table_styles(header_styles)
+            if 'W0' in week_cols_local and len(non_date_idx) > 0:
+                styled = styled.set_properties(
+                    subset=pd.IndexSlice[non_date_idx, ['W0']],
+                    **{'color': 'red', 'font-weight': 'bold'}
+                )
             st.dataframe(styled, width='stretch')
             return combined_df
         else:
-            if 'W0' in week_cols_local:
-                display_df = display_df.style.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
-            st.dataframe(display_df, width='stretch')
+            styled = display_df.style.apply(style_date_row, axis=1)
+            styled = styled.set_table_styles(header_styles)
+            if 'W0' in week_cols_local and len(non_date_idx) > 0:
+                styled = styled.set_properties(
+                    subset=pd.IndexSlice[non_date_idx, ['W0']],
+                    **{'color': 'red', 'font-weight': 'bold'}
+                )
+            st.dataframe(styled, width='stretch')
             return combined_df
     else:
         st.write("No data found")
@@ -194,6 +219,7 @@ def is_supply_row(series):
 
 def build_summary_table(data_frame):
     week_cols = [col for col in data_frame.columns if col.startswith('W')]
+    mon_row = data_frame[data_frame['week'] == 'mon']
     demand_mask = (
         data_frame['week'].str.startswith('LDZ, ') |
         data_frame['week'].str.startswith('GFP, ') |
@@ -212,6 +238,11 @@ def build_summary_table(data_frame):
     summary_df['week'] = ['Demand', 'Supply', 'SnD']
     summary_df = summary_df[['week'] + week_cols]
     summary_df[week_cols] = summary_df[week_cols].round(2)
+
+    if not mon_row.empty:
+        date_row = mon_row[['week'] + week_cols].copy()
+        date_row['week'] = 'date'
+        summary_df = pd.concat([date_row, summary_df], ignore_index=True)
     return summary_df
 
 
@@ -245,18 +276,61 @@ def filter_for_summary(data_frame, label_prefix=""):
     return pd.concat(keep_parts, ignore_index=True)
 
 
-def display_summary_table(summary_df):
+def display_summary_table(summary_df, heatmap=False):
     week_cols = [col for col in summary_df.columns if col.startswith('W')]
 
     def format_numeric(value):
         try:
+            if pd.isna(value):
+                return ''
             return f"{value:.2f}"
         except (TypeError, ValueError):
-            return value
+            return str(value) if value is not None else ''
 
-    styled = summary_df.style.format(format_numeric, subset=week_cols)
-    if 'W0' in summary_df.columns:
-        styled = styled.set_properties(subset=['W0'], **{'color': 'red', 'font-weight': 'bold'})
+    display_df = summary_df.copy()
+    for col in week_cols:
+        display_df[col] = display_df[col].apply(format_numeric)
+
+    date_idx = display_df[display_df['week'] == 'date'].index
+    non_date_idx = display_df[display_df['week'] != 'date'].index
+
+    DARK = '#2d3748'
+
+    def style_date_row(row):
+        if row.name in date_idx:
+            return [f'background-color: {DARK}; color: white; font-weight: bold'] * len(row)
+        return [''] * len(row)
+
+    if heatmap and len(non_date_idx) > 0:
+        start_index = 0
+        if 'W-1' in week_cols:
+            start_index = week_cols.index('W-1')
+        heatmap_cols = week_cols[start_index:]
+
+        if heatmap_cols:
+            numeric_subset = pd.IndexSlice[non_date_idx, heatmap_cols]
+            gmap = summary_df.loc[non_date_idx, heatmap_cols].apply(pd.to_numeric, errors='coerce')
+            styled = display_df.style.background_gradient(
+                cmap='RdYlGn', subset=numeric_subset, gmap=gmap, axis=None
+            )
+            styled = styled.map(
+                lambda v: 'background-color: transparent' if v == '' else '',
+                subset=numeric_subset
+            )
+        else:
+            styled = display_df.style
+    else:
+        styled = display_df.style
+
+    styled = styled.apply(style_date_row, axis=1)
+    styled = styled.set_table_styles([{'selector': 'th', 'props': [
+        ('background-color', DARK), ('color', 'white'), ('font-weight', 'bold')
+    ]}])
+    if 'W0' in summary_df.columns and len(non_date_idx) > 0:
+        styled = styled.set_properties(
+            subset=pd.IndexSlice[non_date_idx, ['W0']],
+            **{'color': 'red', 'font-weight': 'bold'}
+        )
     st.dataframe(styled, width='stretch')
 
 
@@ -363,7 +437,13 @@ with delta_tab:
             st.subheader('Delta vs previous week')
             st.write('Positive values mean an increase vs previous week; negative values mean a decrease.')
             delta_summary_df = build_summary_table(filter_for_summary(delta_df, label_prefix="Delta "))
-            display_summary_table(delta_summary_df)
+            # delta_df has no mon row — prepend date row from current week
+            if not mon_row.empty:
+                summary_week_cols = [c for c in delta_summary_df.columns if c.startswith('W')]
+                date_row = mon_row[['week'] + [c for c in summary_week_cols if c in mon_row.columns]].copy()
+                date_row['week'] = 'date'
+                delta_summary_df = pd.concat([date_row, delta_summary_df], ignore_index=True)
+            display_summary_table(delta_summary_df, heatmap=True)
             render_week_tables(delta_df, label_prefix="Delta ", heatmap=True, mon_row=mon_row)
     else:
         st.warning("Cannot compute delta without previous week file.")
