@@ -230,12 +230,14 @@ def build_summary_table(data_frame):
     supply_sum = data_frame.loc[supply_mask, week_cols].apply(pd.to_numeric, errors='coerce').sum(numeric_only=True)
     snd_sum = supply_sum - demand_sum
 
+    residual_sum = pd.Series(50.0, index=week_cols)   # constant 50 each week
     summary_df = pd.DataFrame([
         demand_sum,
         supply_sum,
+        residual_sum,
         snd_sum
     ], columns=week_cols)
-    summary_df['week'] = ['Demand', 'Supply', 'SnD']
+    summary_df['week'] = ['Demand', 'Supply', 'Residual', 'SnD']
     summary_df = summary_df[['week'] + week_cols]
     summary_df[week_cols] = summary_df[week_cols].round(2)
 
