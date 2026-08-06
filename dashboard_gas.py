@@ -228,16 +228,16 @@ def build_summary_table(data_frame):
     supply_mask = is_supply_row(data_frame['week'])
     demand_sum = data_frame.loc[demand_mask, week_cols].apply(pd.to_numeric, errors='coerce').sum(numeric_only=True)
     supply_sum = data_frame.loc[supply_mask, week_cols].apply(pd.to_numeric, errors='coerce').sum(numeric_only=True)
-    residual_sum = pd.Series(40.0, index=week_cols)   # constant 40 each week
-    snd_sum = supply_sum - demand_sum + residual_sum
+    # residual_sum = pd.Series(40.0, index=week_cols)   # constant 40 each week
+    snd_sum = supply_sum - demand_sum # + residual_sum
 
     summary_df = pd.DataFrame([
         demand_sum,
         supply_sum,
-        residual_sum,
+      #  residual_sum,
         snd_sum
     ], columns=week_cols)
-    summary_df['week'] = ['Demand', 'Supply', 'Residual', 'SnD']
+    summary_df['week'] = ['Demand', 'Supply', 'SnD']
     summary_df = summary_df[['week'] + week_cols]
     summary_df[week_cols] = summary_df[week_cols].round(2)
 
