@@ -210,8 +210,8 @@ def is_supply_row(series):
         series.isin([
             'Local production',
             'NO pipeline flow',
-            'East pipeline flow',
-            'South pipeline flow',
+            'North Africa flow',
+            'Other flow',
             'Regas/LNG',
         ])
     )
