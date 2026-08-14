@@ -55,21 +55,9 @@ def latest_weekly_file(folder="."):
     return files[-1]
 
 
-def previous_week_latest_file(current_dt, folder="."):
-    earlier = [
-        (file_dt, path)
-        for file_dt, path in find_weekly_files(folder)
-        if file_dt < current_dt
-    ]
-    return earlier[-1] if earlier else (None, None)
-
-
 current_date, current_path = latest_weekly_file()
 filename = current_path.name
 
-previous_date, previous_path = previous_week_latest_file(current_date)
-previous_filename = previous_path.name if previous_path is not None else None
-previous_label = previous_date.strftime('%Y-%m-%d') if previous_date is not None else "Previous week"
 
 def load_weekly_df(path):
     raw = pd.read_csv(path)
@@ -93,12 +81,15 @@ except Exception as exc:
 mon_row = raw_df[raw_df['week'] == 'mon']
 
 # Function to display table with total
-def display_table_with_total(sub_df, title, heatmap=False):
+def display_table_with_total(sub_df, title, heatmap=False, key=None):
     st.subheader(title)
     if not sub_df.empty:
-        # Multiselect for rows to include in total
+        # Multiselect for rows to include in total.
+        # `key` is namespaced per selected file by the caller: row labels have
+        # changed between file generations, and Streamlit raises if a stored
+        # selection contains options the new file does not offer.
         rows = sub_df['week'].tolist()
-        selected_rows = st.multiselect(f"Select rows for {title} total", rows, default=rows, key=title)
+        selected_rows = st.multiselect(f"Select rows for {title} total", rows, default=rows, key=key or title)
         
         # Filter data
         filtered_df = sub_df[sub_df['week'].isin(selected_rows)].copy()
@@ -213,6 +204,11 @@ def is_supply_row(series):
             'North Africa flow',
             'Other flow',
             'Regas/LNG',
+            # Legacy labels: files up to 20260727 named these two rows
+            # 'East pipeline flow' / 'South pipeline flow'. Kept so older
+            # files selected for comparison still show a complete Supply table.
+            'East pipeline flow',
+            'South pipeline flow',
         ])
     )
 
@@ -248,12 +244,14 @@ def build_summary_table(data_frame):
     return summary_df
 
 
-def selected_rows_for_table(sub_df, title):
+def selected_rows_for_table(sub_df, key):
     rows = sub_df['week'].tolist()
-    return st.session_state.get(title, rows)
+    return st.session_state.get(key, rows)
 
 
-def filter_for_summary(data_frame, label_prefix=""):
+def filter_for_summary(data_frame, label_prefix="", key_prefix=None):
+    if key_prefix is None:
+        key_prefix = label_prefix
     mon_mask = data_frame['week'] == 'mon'
 
     ldz_mask = data_frame['week'].str.startswith('LDZ, ') & ~data_frame['week'].str.contains('Total')
@@ -262,16 +260,16 @@ def filter_for_summary(data_frame, label_prefix=""):
     supply_mask = is_supply_row(data_frame['week'])
 
     groups = [
-        (ldz_mask, f"{label_prefix}LDZ Demand"),
-        (gfp_mask, f"{label_prefix}GFP Demand"),
-        (industry_mask, f"{label_prefix}Industry Demand"),
-        (supply_mask, f"{label_prefix}Supply"),
+        (ldz_mask, f"{key_prefix}LDZ Demand"),
+        (gfp_mask, f"{key_prefix}GFP Demand"),
+        (industry_mask, f"{key_prefix}Industry Demand"),
+        (supply_mask, f"{key_prefix}Supply"),
     ]
 
     keep_parts = [data_frame[mon_mask]]
-    for mask, title in groups:
+    for mask, key in groups:
         sub_df = data_frame[mask]
-        selected = selected_rows_for_table(insert_mon_row(sub_df, data_frame[mon_mask]), title)
+        selected = selected_rows_for_table(insert_mon_row(sub_df, data_frame[mon_mask]), key)
         selected = [row for row in selected if row != 'mon']
         keep_parts.append(sub_df[sub_df['week'].isin(selected)])
 
@@ -336,7 +334,9 @@ def display_summary_table(summary_df, heatmap=False):
     st.dataframe(styled, width='stretch')
 
 
-def render_week_tables(data_frame, label_prefix="", heatmap=False, mon_row=None):
+def render_week_tables(data_frame, label_prefix="", heatmap=False, mon_row=None, key_prefix=None):
+    if key_prefix is None:
+        key_prefix = label_prefix
     if mon_row is None:
         mon_row = data_frame[data_frame['week'] == 'mon']
     ldz_demand = data_frame[data_frame['week'].str.startswith('LDZ, ') & ~data_frame['week'].str.contains('Total')]
@@ -351,11 +351,16 @@ def render_week_tables(data_frame, label_prefix="", heatmap=False, mon_row=None)
     supply = insert_mon_row(supply, mon_row)
     net_injection = insert_mon_row(net_injection, mon_row)
 
-    edited_ldz = display_table_with_total(ldz_demand, f"{label_prefix}LDZ Demand", heatmap=heatmap)
-    edited_gfp = display_table_with_total(gfp_demand, f"{label_prefix}GFP Demand", heatmap=heatmap)
-    edited_industry = display_table_with_total(industry_demand, f"{label_prefix}Industry Demand", heatmap=heatmap)
-    edited_supply = display_table_with_total(supply, f"{label_prefix}Supply", heatmap=heatmap)
-    edited_injection = display_table_with_total(net_injection, f"{label_prefix}Net Injection", heatmap=heatmap)
+    edited_ldz = display_table_with_total(
+        ldz_demand, f"{label_prefix}LDZ Demand", heatmap=heatmap, key=f"{key_prefix}LDZ Demand")
+    edited_gfp = display_table_with_total(
+        gfp_demand, f"{label_prefix}GFP Demand", heatmap=heatmap, key=f"{key_prefix}GFP Demand")
+    edited_industry = display_table_with_total(
+        industry_demand, f"{label_prefix}Industry Demand", heatmap=heatmap, key=f"{key_prefix}Industry Demand")
+    edited_supply = display_table_with_total(
+        supply, f"{label_prefix}Supply", heatmap=heatmap, key=f"{key_prefix}Supply")
+    edited_injection = display_table_with_total(
+        net_injection, f"{label_prefix}Net Injection", heatmap=heatmap, key=f"{key_prefix}Net Injection")
     return edited_ldz, edited_gfp, edited_industry, edited_supply, edited_injection
 
 
@@ -415,30 +420,66 @@ with current_tab:
     display_summary_table(summary_df)
     edited_ldz, edited_gfp, edited_industry, edited_supply, edited_injection = render_week_tables(df, mon_row=mon_row)
 
+# Every weekly file except the current one is a valid comparison target,
+# newest first so index 0 is the immediately preceding week (the old default).
+comparison_files = [
+    (file_dt, path) for file_dt, path in reversed(find_weekly_files())
+    if path.name != current_path.name
+]
+
+# Set inside previous_tab and reused by delta_tab. Streamlit executes tab
+# bodies top to bottom in one pass, so previous_tab always runs first.
+selected_prev = None
+
 with previous_tab:
-    prev_path = Path(previous_filename) if previous_filename else None
-    if prev_path is not None and prev_path.exists():
-        prev_df, _, prev_raw = load_weekly_df(previous_filename)
-        prev_mon_row = prev_raw[prev_raw['week'] == 'mon']
-        st.write(f"Showing data for {previous_label}")
-        st.subheader('Summary')
-        prev_summary_df = build_summary_table(filter_for_summary(prev_df, label_prefix="Previous "))
-        display_summary_table(prev_summary_df)
-        render_week_tables(prev_df, label_prefix="Previous ", mon_row=prev_mon_row)
+    if not comparison_files:
+        st.warning("No other weekly files found to compare against.")
     else:
-        st.warning("Previous week file not found.")
+        options = list(range(len(comparison_files)))
+        choice = st.selectbox(
+            "Compare against",
+            options,
+            index=0,
+            format_func=lambda i: comparison_files[i][0].strftime('%Y-%m-%d'),
+            key="comparison_file_idx",
+        )
+        selected_prev_date, selected_prev_path = comparison_files[choice]
+        selected_prev_label = selected_prev_date.strftime('%Y-%m-%d')
+
+        try:
+            prev_df, _, prev_raw = load_weekly_df(selected_prev_path.name)
+        except Exception as exc:
+            st.error(f"Unable to load {selected_prev_path.name}: {exc}")
+        else:
+            selected_prev = (selected_prev_path, selected_prev_label, prev_df, prev_raw)
+            prev_mon_row = prev_raw[prev_raw['week'] == 'mon']
+            st.write(f"Showing data for {selected_prev_label} ({selected_prev_path.name})")
+            st.subheader('Summary')
+            # Widget keys are namespaced by filename so switching files does not
+            # carry stale row selections into a file with different row labels.
+            key_prefix = f"Previous {selected_prev_path.name} "
+            prev_summary_df = build_summary_table(
+                filter_for_summary(prev_df, label_prefix="Previous ", key_prefix=key_prefix))
+            display_summary_table(prev_summary_df)
+            render_week_tables(prev_df, label_prefix="Previous ",
+                               mon_row=prev_mon_row, key_prefix=key_prefix)
 
 with delta_tab:
-    prev_path = Path(previous_filename) if previous_filename else None
-    if prev_path is not None and prev_path.exists():
-        prev_df, _, prev_raw = load_weekly_df(previous_filename)
+    if selected_prev is not None:
+        selected_prev_path, selected_prev_label, prev_df, prev_raw = selected_prev
         delta_df = compute_delta(df, prev_df, raw_df, prev_raw)
         if delta_df.empty:
             st.warning("No matching rows available to compute delta.")
         else:
-            st.subheader('Delta vs previous week')
-            st.write('Positive values mean an increase vs previous week; negative values mean a decrease.')
-            delta_summary_df = build_summary_table(filter_for_summary(delta_df, label_prefix="Delta "))
+            st.subheader(f'Delta: {current_label} vs {selected_prev_label}')
+            st.write(
+                f'Latest file `{current_path.name}` minus `{selected_prev_path.name}`. '
+                'Positive values mean an increase vs the selected file; negative values mean a decrease. '
+                'Weeks are matched on their Monday date, so blanks are weeks the two files do not share.'
+            )
+            delta_key_prefix = f"Delta {selected_prev_path.name} "
+            delta_summary_df = build_summary_table(
+                filter_for_summary(delta_df, label_prefix="Delta ", key_prefix=delta_key_prefix))
             # delta_df has no mon row — prepend date row from current week
             if not mon_row.empty:
                 summary_week_cols = [c for c in delta_summary_df.columns if c.startswith('W')]
@@ -446,9 +487,10 @@ with delta_tab:
                 date_row['week'] = 'date'
                 delta_summary_df = pd.concat([date_row, delta_summary_df], ignore_index=True)
             display_summary_table(delta_summary_df, heatmap=True)
-            render_week_tables(delta_df, label_prefix="Delta ", heatmap=True, mon_row=mon_row)
+            render_week_tables(delta_df, label_prefix="Delta ", heatmap=True,
+                               mon_row=mon_row, key_prefix=delta_key_prefix)
     else:
-        st.warning("Cannot compute delta without previous week file.")
+        st.warning("Select a file to compare against on the 'previous week' tab.")
 
 # Option to save changes
 if st.button("Save Changes"):
